@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Microsoft.Extensions.Logging;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -7,11 +8,11 @@ namespace HealthCoach.App
 {
     public class DialogManager
     {
-        private static DialogManager _Instance = new DialogManager();
+        private ILogger<DialogManager> log;
 
-        public static DialogManager Instance
+        public DialogManager(ILogger<DialogManager> logger)
         {
-            get { return _Instance; }
+            log = logger;
         }
 
         private Dictionary<string, Dictionary<string, string>> _manager = new Dictionary<string, Dictionary<string, string>>();

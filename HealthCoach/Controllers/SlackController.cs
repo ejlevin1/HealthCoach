@@ -18,9 +18,11 @@ namespace HealthCoach.Controllers
     {
         private readonly ILogger _logger;
         private IAzureFileWriter _writer;
+        private DialogManager _dialogManager = null;
 
-        public SlackController(IAzureFileWriter writer, ILogger<SlackController> logger)
+        public SlackController(DialogManager dialogManager, IAzureFileWriter writer, ILogger<SlackController> logger)
         {
+            _dialogManager = dialogManager;
             _logger = logger;
             _writer = writer;
         }
@@ -39,15 +41,13 @@ namespace HealthCoach.Controllers
                     new JsonConverter[] { new StringEnumConverter() });
                 _writer.Write(pp);
 
-                var dm = DialogManager.Instance;
-
                 var root = JsonConvert.DeserializeObject<App.SlackEntities.Rootobject>(body.ToString());
                 if(root.type == "event_callback" && root._event?.type == "message")
                 {
                     var e = root._event;
-                    dm.HandleMessage("slack", e.username, e.text, (response) => {
+                    _dialogManager.HandleMessage("slack", e.username, e.text, (response) => {
                         SendMessage(root.token, e.channel, response);
-                    }, e.file?.thumb_1024);
+                    }, e.file?.permalink);
                 }
             }
             catch (Exception ex)

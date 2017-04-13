@@ -1,7 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Threading.Tasks;
+﻿using Newtonsoft.Json;
 
 namespace HealthCoach.App.SlackEntities
 {
@@ -11,6 +8,8 @@ namespace HealthCoach.App.SlackEntities
         public string token { get; set; }
         public string team_id { get; set; }
         public string api_app_id { get; set; }
+
+        [JsonProperty("event")]
         public Event _event { get; set; }
         public string type { get; set; }
         public string[] authed_users { get; set; }

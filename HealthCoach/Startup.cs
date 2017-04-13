@@ -13,6 +13,7 @@ using Serilog;
 using Loggly.Config;
 using Loggly;
 using HealthCoach.Middleware;
+using HealthCoach.App;
 
 namespace HealthCoach
 {
@@ -65,6 +66,7 @@ namespace HealthCoach
                    ShouldVerifySignature = false,
                    VerifyToken = "my_verify_token"
             });
+            services.AddSingleton<DialogManager>();
 
             Azure.RegisterServices(Configuration, services).Wait();
 
