@@ -14,11 +14,16 @@ using Loggly.Config;
 using Loggly;
 using HealthCoach.Middleware;
 using HealthCoach.App;
+using Quartz.Impl;
+using Quartz;
+using System.Collections.Specialized;
 
 namespace HealthCoach
 {
     public class Startup
     {
+        private IScheduler _Scheduler = null;
+
         public IConfigurationRoot Configuration { get; }
 
         public Startup(IHostingEnvironment env)
@@ -35,30 +40,53 @@ namespace HealthCoach
 
         private void ConfigureLogging(IHostingEnvironment env)
         {
-            var config = LogglyConfig.Instance;
-            config.CustomerToken = "bd919fb8-1661-434c-bab3-4751fab77e9a";
-            config.ApplicationName = $"HealthCoach-{env.EnvironmentName}";
+            if(false)//env.IsDevelopment())
+            {
+                Log.Logger = new LoggerConfiguration()
+                    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+                    .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Console()
+                    .CreateLogger();
+            }
+            else
+            {
+                var config = LogglyConfig.Instance;
+                config.CustomerToken = "bd919fb8-1661-434c-bab3-4751fab77e9a";
+                config.ApplicationName = $"HealthCoach-{env.EnvironmentName}";
 
-            config.Transport.EndpointHostname = "logs-01.loggly.com";
-            config.Transport.EndpointPort = 443;
-            config.Transport.LogTransport = LogTransport.Https;
+                config.Transport.EndpointHostname = "logs-01.loggly.com";
+                config.Transport.EndpointPort = 443;
+                config.Transport.LogTransport = LogTransport.Https;
 
-            var ct = new ApplicationNameTag();
-            ct.Formatter = "application-{0}";
-            config.TagConfig.Tags.Add(ct);
+                var ct = new ApplicationNameTag();
+                ct.Formatter = "application-{0}";
+                config.TagConfig.Tags.Add(ct);
 
-            Log.Logger = new LoggerConfiguration()
-                .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
-                .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
-                .Enrich.FromLogContext()
-                .WriteTo.Loggly(Serilog.Events.LogEventLevel.Information)
-                .CreateLogger();
+                Log.Logger = new LoggerConfiguration()
+                    .MinimumLevel.Override("Microsoft", Serilog.Events.LogEventLevel.Warning)
+                    .MinimumLevel.Override("System", Serilog.Events.LogEventLevel.Warning)
+                    .Enrich.FromLogContext()
+                    .WriteTo.Loggly(Serilog.Events.LogEventLevel.Information)
+                    .CreateLogger();
+            }
         }
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
         {
             services.AddSingleton<IConfiguration>(Configuration);
+
+            try
+            {
+                throw new Exception("Random exception");
+                _Scheduler = Scheduling.Create().Result;
+                services.AddSingleton<IScheduler>(_Scheduler);
+            }
+            catch(Exception ex)
+            {
+                Log.Logger.Error(ex, "Failed to startup scheduling.");
+            }
 
             services.AddSingleton<FacebookOptions>(new FacebookOptions() {
                    AppSecret = "6259b3e435b7971f92f2af0dc38792ca",
@@ -68,6 +96,10 @@ namespace HealthCoach
             });
             services.AddSingleton<DialogManager>();
 
+            //string eventhubHostFormat = "amqps://{0}:{1}@{2}.servicebus.windows.net";
+            //var address = string.Format(eventhubHostFormat, "RootManageSharedAccessKey", Uri.EscapeUriString("i4O7XCN0bK7wjbyQJo1H30ZfTb0RVPejysh1pmMu/Zw="), "healthcoach");
+            //services.AddSingleton<IEventingClient>(new AzureEventingClient(address));
+
             Azure.RegisterServices(Configuration, services).Wait();
 
             // Add framework services.
@@ -75,7 +107,7 @@ namespace HealthCoach
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
-        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory)
+        public void Configure(IApplicationBuilder app, IHostingEnvironment env, ILoggerFactory loggerFactory, IApplicationLifetime lifetime)
         {
             loggerFactory.AddConsole(Configuration.GetSection("Logging"));
             loggerFactory.AddDebug();
@@ -83,6 +115,21 @@ namespace HealthCoach
 
             app.UseMiddleware<SerilogMiddleware>();
             app.UseMvcWithDefaultRoute();
+
+            try
+            {
+                lifetime.ApplicationStopping.Register(OnShutdown);
+            }
+            catch (Exception ex)
+            {
+                Log.Logger.Error(ex, "Failed to register shutdown event.");
+            }
+        }
+
+        private void OnShutdown()
+        {
+            if (_Scheduler != null)
+                _Scheduler.Shutdown().Wait();
         }
     }
 }
